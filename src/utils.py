@@ -62,27 +62,24 @@ def clear_torch_cache():
             torch.cuda.ipc_collect()
             gc.collect()
     except RuntimeError as e:
-        print("clear_torch_cache error: %s" % ''.join(traceback.format_tb(e.__traceback__)), flush=True)
+        print(
+            f"clear_torch_cache error: {''.join(traceback.format_tb(e.__traceback__))}",
+            flush=True,
+        )
 
 
 def ping():
-    try:
-        print('Ping: %s' % str(datetime.now()), flush=True)
-    except AttributeError:
-        # some programs wrap print and will fail with flush passed
-        pass
+    with contextlib.suppress(AttributeError):
+        print(f'Ping: {str(datetime.now())}', flush=True)
 
 
 def ping_gpu():
-    try:
-        print('Ping_GPU: %s %s' % (str(datetime.now()), system_info()), flush=True)
-    except AttributeError:
-        # some programs wrap print and will fail with flush passed
-        pass
+    with contextlib.suppress(AttributeError):
+        print(f'Ping_GPU: {str(datetime.now())} {system_info()}', flush=True)
     try:
         ping_gpu_memory()
     except Exception as e:
-        print('Ping_GPU memory failure: %s' % str(e), flush=True)
+        print(f'Ping_GPU memory failure: {str(e)}', flush=True)
 
 
 def ping_gpu_memory():
@@ -100,13 +97,11 @@ def get_torch_allocated():
 def get_device():
     import torch
     if torch.cuda.is_available():
-        device = "cuda"
+        return "cuda"
     elif torch.backends.mps.is_built():
-        device = "mps"
+        return "mps"
     else:
-        device = "cpu"
-
-    return device
+        return "cpu"
 
 
 def system_info():
@@ -115,30 +110,27 @@ def system_info():
     system = {}
     # https://stackoverflow.com/questions/48951136/plot-multiple-graphs-in-one-plot-using-tensorboard
     # https://arshren.medium.com/monitoring-your-devices-in-python-5191d672f749
-    try:
+    with contextlib.suppress(AttributeError):
         temps = psutil.sensors_temperatures(fahrenheit=False)
         if 'coretemp' in temps:
             coretemp = temps['coretemp']
             temp_dict = {k.label: k.current for k in coretemp}
             for k, v in temp_dict.items():
-                system['CPU_C/%s' % k] = v
-    except AttributeError:
-        pass
-
+                system[f'CPU_C/{k}'] = v
     # https://github.com/gpuopenanalytics/pynvml/blob/master/help_query_gpu.txt
-    try:
+    with contextlib.suppress(KeyError, ModuleNotFoundError):
         from pynvml.smi import nvidia_smi
         nvsmi = nvidia_smi.getInstance()
 
         gpu_power_dict = {'W_gpu%d' % i: x['power_readings']['power_draw'] for i, x in
                           enumerate(nvsmi.DeviceQuery('power.draw')['gpu'])}
         for k, v in gpu_power_dict.items():
-            system['GPU_W/%s' % k] = v
+            system[f'GPU_W/{k}'] = v
 
         gpu_temp_dict = {'C_gpu%d' % i: x['temperature']['gpu_temp'] for i, x in
                          enumerate(nvsmi.DeviceQuery('temperature.gpu')['gpu'])}
         for k, v in gpu_temp_dict.items():
-            system['GPU_C/%s' % k] = v
+            system[f'GPU_C/{k}'] = v
 
         gpu_memory_free_dict = {'MiB_gpu%d' % i: x['fb_memory_usage']['free'] for i, x in
                                 enumerate(nvsmi.DeviceQuery('memory.free')['gpu'])}
@@ -146,9 +138,7 @@ def system_info():
                                  enumerate(nvsmi.DeviceQuery('memory.total')['gpu'])}
         gpu_memory_frac_dict = {k: gpu_memory_free_dict[k] / gpu_memory_total_dict[k] for k in gpu_memory_total_dict}
         for k, v in gpu_memory_frac_dict.items():
-            system[f'GPU_M/%s' % k] = v
-    except (KeyError, ModuleNotFoundError):
-        pass
+            system[f'GPU_M/{k}'] = v
     system['hash'] = get_githash()
 
     return system
@@ -161,7 +151,7 @@ def system_info_print():
         time.sleep(1)
         return df.to_markdown()
     except Exception as e:
-        return "Error: %s" % str(e)
+        return f"Error: {str(e)}"
 
 
 def zip_data(root_dirs=None, zip_file=None, base_dir='./', fail_any_exception=False):
@@ -169,7 +159,7 @@ def zip_data(root_dirs=None, zip_file=None, base_dir='./', fail_any_exception=Fa
         return _zip_data(zip_file=zip_file, base_dir=base_dir, root_dirs=root_dirs)
     except Exception as e:
         traceback.print_exc()
-        print('Exception in zipping: %s' % str(e))
+        print(f'Exception in zipping: {str(e)}')
         if not fail_any_exception:
             raise
 
@@ -180,7 +170,7 @@ def _zip_data(root_dirs=None, zip_file=None, base_dir='./'):
     if zip_file is None:
         datetime_str = str(datetime.now()).replace(" ", "_").replace(":", "_")
         host_name = os.getenv('HF_HOSTNAME', 'emptyhost')
-        zip_file = "data_%s_%s.zip" % (datetime_str, host_name)
+        zip_file = f"data_{datetime_str}_{host_name}.zip"
     assert root_dirs is not None
     base_path = os.path.dirname(zip_file)
     if not os.path.isdir(base_path) and os.path.dirname(zip_file):
@@ -206,7 +196,7 @@ def save_generate_output(prompt=None, output=None, base_model=None, save_dir=Non
                                      where_from=where_from, extra_dict=extra_dict)
     except Exception as e:
         traceback.print_exc()
-        print('Exception in saving: %s' % str(e))
+        print(f'Exception in saving: {str(e)}')
 
 
 def _save_generate_output(prompt=None, output=None, base_model=None, save_dir=None, where_from='unknown where from',
@@ -224,16 +214,12 @@ def _save_generate_output(prompt=None, output=None, base_model=None, save_dir=No
     os.makedirs(save_dir, exist_ok=True)
     import json
     dict_to_save = dict(prompt=prompt, text=output, time=time.ctime(), base_model=base_model, where_from=where_from)
-    dict_to_save.update(extra_dict)
+    dict_to_save |= extra_dict
     with filelock.FileLock("save_dir.lock"):
         # lock logging in case have concurrency
         with open(os.path.join(save_dir, "history.json"), "a") as f:
             # just add [ at start, and ] at end, and have proper JSON dataset
-            f.write(
-                "  " + json.dumps(
-                    dict_to_save
-                ) + ",\n"
-            )
+            f.write((f"  {json.dumps(dict_to_save)}" + ",\n"))
 
 
 def s3up(filename):
@@ -241,8 +227,8 @@ def s3up(filename):
         return _s3up(filename)
     except Exception as e:
         traceback.print_exc()
-        print('Exception for file %s in s3up: %s' % (filename, str(e)))
-        return "Failed to upload %s: Error: %s" % (filename, str(e))
+        print(f'Exception for file {filename} in s3up: {str(e)}')
+        return f"Failed to upload {filename}: Error: {str(e)}"
 
 
 def _s3up(filename):
@@ -265,12 +251,14 @@ def _s3up(filename):
         Key=filename,
     )
     if ret in [None, '']:
-        return "Successfully uploaded %s" % filename
+        return f"Successfully uploaded {filename}"
 
 
 def get_githash():
     try:
-        githash = subprocess.run(['git', 'rev-parse', 'HEAD'], stdout=subprocess.PIPE).stdout.decode('utf-8')[0:-1]
+        githash = subprocess.run(
+            ['git', 'rev-parse', 'HEAD'], stdout=subprocess.PIPE
+        ).stdout.decode('utf-8')[:-1]
     except:
         githash = ''
     return githash
@@ -283,16 +271,14 @@ def copy_code(run_id):
     :return:
     """
     rnd_num = str(random.randint(0, 2 ** 31))
-    run_id = 'run_' + str(run_id)
+    run_id = f'run_{str(run_id)}'
     os.makedirs(run_id, exist_ok=True)
     me_full = os.path.join(pathlib.Path(__file__).parent.resolve(), __file__)
     me_file = os.path.basename(__file__)
     new_me = os.path.join(run_id, me_file + '_' + get_githash())
     if os.path.isfile(new_me):
         new_me = os.path.join(run_id, me_file + '_' + get_githash() + '_' + rnd_num)
-        shutil.copy(me_full, new_me)
-    else:
-        shutil.copy(me_full, new_me)
+    shutil.copy(me_full, new_me)
 
 
 class NullContext(threading.local):
@@ -348,11 +334,11 @@ class EThread(threading.Thread):
             if self._target is not None:
                 self._return = self._target(*self._args, **self._kwargs)
         except BaseException as e:
-            print("thread exception: %s" % str(sys.exc_info()))
+            print(f"thread exception: {str(sys.exc_info())}")
             self.bucket.put(sys.exc_info())
             self.exc = e
             if self.streamer:
-                print("make stop: %s" % str(sys.exc_info()), flush=True)
+                print(f"make stop: {str(sys.exc_info())}", flush=True)
                 self.streamer.do_stop = True
         finally:
             # Avoid a refcycle if the thread is running a function with
@@ -401,12 +387,17 @@ def sanitize_filename(name):
 
     length = len(name)
     file_length_limit = 250  # bit smaller than 256 for safety
-    sha_length = 32
-    real_length_limit = file_length_limit - (sha_length + 2)
     if length > file_length_limit:
         sha = get_sha(name)
+        real_length_limit = file_length_limit - (32 + 2)
         half_real_length_limit = max(1, int(real_length_limit / 2))
-        name = name[0:half_real_length_limit] + "_" + sha + "_" + name[length - half_real_length_limit:length]
+        name = (
+            name[:half_real_length_limit]
+            + "_"
+            + sha
+            + "_"
+            + name[length - half_real_length_limit : length]
+        )
 
     return name
 
@@ -445,7 +436,7 @@ def makedirs(path, exist_ok=True, tmp_ok=False):
         if tmp_ok:
             path0 = path
             path = os.path.join('/tmp/', path)
-            print("Permission denied to %s, using %s instead" % (path0, path), flush=True)
+            print(f"Permission denied to {path0}, using {path} instead", flush=True)
             os.makedirs(path, exist_ok=exist_ok)
             return path
         else:
@@ -453,16 +444,14 @@ def makedirs(path, exist_ok=True, tmp_ok=False):
 
 
 def atomic_move_simple(src, dst):
-    try:
+    with contextlib.suppress(shutil.Error, FileExistsError):
         shutil.move(src, dst)
-    except (shutil.Error, FileExistsError):
-        pass
     remove(src)
 
 
 def download_simple(url, dest=None, print_func=None):
     if print_func is not None:
-        print_func("BEGIN get url %s" % str(url))
+        print_func(f"BEGIN get url {str(url)}")
     if url.startswith("file://"):
         from requests_file import FileAdapter
         s = requests.Session()
@@ -473,11 +462,7 @@ def download_simple(url, dest=None, print_func=None):
     if dest is None:
         dest = os.path.basename(url)
     if url_data.status_code != requests.codes.ok:
-        msg = "Cannot get url %s, code: %s, reason: %s" % (
-            str(url),
-            str(url_data.status_code),
-            str(url_data.reason),
-        )
+        msg = f"Cannot get url {str(url)}, code: {url_data.status_code}, reason: {url_data.reason}"
         raise requests.exceptions.RequestException(msg)
     url_data.raw.decode_content = True
     base_path = os.path.dirname(dest)
@@ -489,24 +474,24 @@ def download_simple(url, dest=None, print_func=None):
         shutil.copyfileobj(url_data.raw, f)
     atomic_move_simple(dest_tmp, dest)
     if print_func is not None:
-        print_func("END get url %s" % str(url))
+        print_func(f"END get url {str(url)}")
 
 
 def download(url, dest=None, dest_path=None):
     if dest_path is not None:
         dest = os.path.join(dest_path, os.path.basename(url))
         if os.path.isfile(dest):
-            print("already downloaded %s -> %s" % (url, dest))
+            print(f"already downloaded {url} -> {dest}")
             return dest
     elif dest is not None:
         if os.path.exists(dest):
-            print("already downloaded %s -> %s" % (url, dest))
+            print(f"already downloaded {url} -> {dest}")
             return dest
     else:
         uuid_tmp = "dl2_" + str(uuid.uuid4())[:6]
         dest = uuid_tmp + os.path.basename(url)
 
-    print("downloading %s to %s" % (url, dest))
+    print(f"downloading {url} to {dest}")
 
     if url.startswith("file://"):
         from requests_file import FileAdapter
@@ -517,8 +502,7 @@ def download(url, dest=None, dest_path=None):
         url_data = requests.get(url, stream=True)
 
     if url_data.status_code != requests.codes.ok:
-        msg = "Cannot get url %s, code: %s, reason: %s" % (
-            str(url), str(url_data.status_code), str(url_data.reason))
+        msg = f"Cannot get url {str(url)}, code: {url_data.status_code}, reason: {url_data.reason}"
         raise requests.exceptions.RequestException(msg)
     url_data.raw.decode_content = True
     dirname = os.path.dirname(dest)
@@ -530,29 +514,19 @@ def download(url, dest=None, dest_path=None):
     dest_tmp = dest + "_" + uuid_tmp + ".tmp"
     with open(dest_tmp, 'wb') as f:
         shutil.copyfileobj(url_data.raw, f)
-    try:
+    with contextlib.suppress(FileExistsError):
         shutil.move(dest_tmp, dest)
-    except FileExistsError:
-        pass
     remove(dest_tmp)
     return dest
 
 
 def get_url(x, from_str=False, short_name=False):
-    if not from_str:
-        source = x.metadata['source']
-    else:
-        source = x
-    if short_name:
-        source_name = get_short_name(source)
-    else:
-        source_name = source
+    source = x.metadata['source'] if not from_str else x
+    source_name = get_short_name(source) if short_name else source
     if source.startswith('http://') or source.startswith('https://'):
-        return """<a href="%s" target="_blank"  rel="noopener noreferrer">%s</a>""" % (
-            source, source_name)
+        return f"""<a href="{source}" target="_blank"  rel="noopener noreferrer">{source_name}</a>"""
     else:
-        return """<a href="file/%s" target="_blank"  rel="noopener noreferrer">%s</a>""" % (
-            source, source_name)
+        return f"""<a href="file/{source}" target="_blank"  rel="noopener noreferrer">{source_name}</a>"""
 
 
 def get_short_name(name, maxl=50):
@@ -562,7 +536,7 @@ def get_short_name(name, maxl=50):
     if length > maxl:
         allow_length = maxl - 3
         half_allowed = max(1, int(allow_length / 2))
-        name = name[0:half_allowed] + "..." + name[length - half_allowed:length]
+        name = name[:half_allowed] + "..." + name[length - half_allowed:length]
     return name
 
 
@@ -598,24 +572,19 @@ def get_ngpus_vis(raise_if_exception=True):
     ngpus_vis1 = 0
 
     shell = False
-    if shell:
-        cmd = "nvidia-smi -L 2> /dev/null"
-    else:
-        cmd = ["nvidia-smi", "-L"]
-
+    cmd = "nvidia-smi -L 2> /dev/null" if shell else ["nvidia-smi", "-L"]
     try:
         timeout = 5 * 3
         o = subprocess.check_output(cmd, shell=shell, timeout=timeout)
         lines = o.decode("utf-8").splitlines()
-        ngpus_vis1 = 0
-        for line in lines:
-            if 'Failed to initialize NVML' not in line:
-                ngpus_vis1 += 1
-    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+        ngpus_vis1 = sum(
+            1 for line in lines if 'Failed to initialize NVML' not in line
+        )
+    except (subprocess.CalledProcessError, OSError):
         # GPU systems might not have nvidia-smi, so can't fail
         pass
     except subprocess.TimeoutExpired as e:
-        print('Failed get_ngpus_vis: %s' % str(e))
+        print(f'Failed get_ngpus_vis: {str(e)}')
         if raise_if_exception:
             raise
 
@@ -642,11 +611,11 @@ def get_mem_gpus(raise_if_exception=True, ngpus=None):
                 usedmem_gpus1 += int(line.split()[2]) * 1024 ** 2
             if 'Free' in line:
                 freemem_gpus1 += int(line.split()[2]) * 1024 ** 2
-    except (FileNotFoundError, subprocess.CalledProcessError, OSError):
+    except (subprocess.CalledProcessError, OSError):
         # GPU systems might not have nvidia-smi, so can't fail
         pass
     except subprocess.TimeoutExpired as e:
-        print('Failed get_mem_gpus: %s' % str(e))
+        print(f'Failed get_mem_gpus: {str(e)}')
         if raise_if_exception:
             raise
 
@@ -682,7 +651,7 @@ class ForkContext(threading.local):
             sys.stderr.flush()
         except BaseException as e:
             # exit not called if exception, and don't want to leave forkdatacontext filled in that case
-            print("ForkContext failure on enter: %s" % str(e))
+            print(f"ForkContext failure on enter: {str(e)}")
             self.finally_act()
             raise
         return self
@@ -726,7 +695,7 @@ class _ForkDataContext(threading.local):
     def args(self, args):
         if self.__args is not None:
             raise AttributeError(
-                "args cannot be overwritten: %s %s" % (str(self.__args), str(self.__kwargs))
+                f"args cannot be overwritten: {str(self.__args)} {str(self.__kwargs)}"
             )
 
         self.__args = args
@@ -740,7 +709,7 @@ class _ForkDataContext(threading.local):
     def kwargs(self, kwargs):
         if self.__kwargs is not None:
             raise AttributeError(
-                "kwargs cannot be overwritten: %s %s" % (str(self.__args), str(self.__kwargs))
+                f"kwargs cannot be overwritten: {str(self.__args)} {str(self.__kwargs)}"
             )
 
         self.__kwargs = kwargs
@@ -786,7 +755,7 @@ class _ForkDataContext(threading.local):
 
         proc_type = kwargs.get('proc_type', 'SUBPROCESS')
         if using_forkdatacontext:
-            assert proc_type == "SUBPROCESS" or proc_type == "SUBPROCESS"
+            assert proc_type in ["SUBPROCESS", "SUBPROCESS"]
         if proc_type == "NORMAL":
             assert forkdatacontext_args_was_None, "if no fork, expect forkdatacontext.args None entering _traced_func"
             assert forkdatacontext_kwargs_was_None, "if no fork, expect forkdatacontext.kwargs None entering _traced_func"
@@ -850,7 +819,7 @@ def get_kwargs(func, exclude_names=None, **kwargs):
                 missing_kwargs.remove(k)
             if k in func_names:
                 func_names.remove(k)
-    assert not missing_kwargs, "Missing %s" % missing_kwargs
+    assert not missing_kwargs, f"Missing {missing_kwargs}"
     kwargs = {k: v for k, v in kwargs.items() if k in func_names}
     return kwargs
 
@@ -859,21 +828,15 @@ import pkg_resources
 
 have_faiss = False
 
-try:
+with contextlib.suppress(pkg_resources.DistributionNotFound, AssertionError):
     assert pkg_resources.get_distribution('faiss') is not None
     have_faiss = True
-except (pkg_resources.DistributionNotFound, AssertionError):
-    pass
-try:
+with contextlib.suppress(pkg_resources.DistributionNotFound, AssertionError):
     assert pkg_resources.get_distribution('faiss_gpu') is not None
     have_faiss = True
-except (pkg_resources.DistributionNotFound, AssertionError):
-    pass
-try:
+with contextlib.suppress(pkg_resources.DistributionNotFound, AssertionError):
     assert pkg_resources.get_distribution('faiss_cpu') is not None
     have_faiss = True
-except (pkg_resources.DistributionNotFound, AssertionError):
-    pass
 
 
 def hash_file(file):
@@ -888,13 +851,13 @@ def hash_file(file):
 
         with open(file, 'rb') as f:
             while True:
-                data = f.read(BUF_SIZE)
-                if not data:
+                if data := f.read(BUF_SIZE):
+                    md5.update(data)
+                else:
                     break
-                md5.update(data)
-                # sha1.update(data)
+                            # sha1.update(data)
     except BaseException as e:
-        print("Cannot hash %s due to %s" % (file, str(e)))
+        print(f"Cannot hash {file} due to {str(e)}")
         traceback.print_exc()
         md5 = None
     return md5.hexdigest()
@@ -915,10 +878,10 @@ def start_faulthandler():
 
 def get_hf_server(inference_server):
     inf_split = inference_server.split("    ")
-    assert len(inf_split) == 1 or len(inf_split) == 3
+    assert len(inf_split) in {1, 3}
     inference_server = inf_split[0]
     if len(inf_split) == 3:
-        headers = {"authorization": "%s %s" % (inf_split[1], inf_split[2])}
+        headers = {"authorization": f"{inf_split[1]} {inf_split[2]}"}
     else:
         headers = None
     return inference_server, headers
@@ -951,8 +914,7 @@ class FakeTokenizer:
 
     def num_tokens_from_string(self, prompt: str) -> int:
         """Returns the number of tokens in a text string."""
-        num_tokens = len(self.encoding.encode(prompt))
-        return num_tokens
+        return len(self.encoding.encode(prompt))
 
     def __call__(self, x, *args, **kwargs):
         return self.encode(x, *args, **kwargs)
@@ -1061,15 +1023,15 @@ def save_collection_names(langchain_modes, visible_langchain_modes, langchain_mo
 
     # user
     extra = ''
-    file = "%s%s" % (visible_langchain_modes_file, extra)
-    with filelock.FileLock(os.path.join(base_path, "%s.lock" % file)):
+    file = f"{visible_langchain_modes_file}{extra}"
+    with filelock.FileLock(os.path.join(base_path, f"{file}.lock")):
         with open(file, 'wb') as f:
             pickle.dump((user_langchain_modes, user_visible_langchain_modes, user_langchain_mode_paths), f)
 
     # scratch
     extra = user_hash
-    file = "%s%s" % (visible_langchain_modes_file, extra)
-    with filelock.FileLock(os.path.join(base_path, "%s.lock" % file)):
+    file = f"{visible_langchain_modes_file}{extra}"
+    with filelock.FileLock(os.path.join(base_path, f"{file}.lock")):
         with open(file, 'wb') as f:
             pickle.dump((scratch_langchain_modes, scratch_visible_langchain_modes, scratch_langchain_mode_paths), f)
 
@@ -1078,18 +1040,18 @@ def load_collection_enum(extra):
     """
     extra controls if UserData type of MyData type
     """
-    file = "%s%s" % (visible_langchain_modes_file, extra)
+    file = f"{visible_langchain_modes_file}{extra}"
     langchain_modes_from_file = []
     visible_langchain_modes_from_file = []
     langchain_mode_paths_from_file = {}
     if os.path.isfile(visible_langchain_modes_file):
         try:
-            with filelock.FileLock("%s.lock" % file):
+            with filelock.FileLock(f"{file}.lock"):
                 with open(file, 'rb') as f:
                     langchain_modes_from_file, visible_langchain_modes_from_file, langchain_mode_paths_from_file = pickle.load(
                         f)
         except BaseException as e:
-            print("Cannot load %s, ignoring error: %s" % (file, str(e)), flush=True)
+            print(f"Cannot load {file}, ignoring error: {str(e)}", flush=True)
     for k, v in langchain_mode_paths_from_file.items():
         if v is not None and not os.path.isdir(v) and isinstance(v, str):
             # assume was deleted, but need to make again to avoid extra code elsewhere

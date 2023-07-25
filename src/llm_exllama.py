@@ -94,10 +94,7 @@ class Exllama(LLM):
             model_paths = glob.glob(full_pattern)
             if model_paths:  # If there are any files matching the current pattern
                 break  # Exit the loop as soon as we find a matching file
-        if model_paths:  # If there are any files matching any of the patterns
-            return model_paths[0]
-        else:
-            return None  # Return None if no matching files were found
+        return model_paths[0] if model_paths else None
 
     @staticmethod
     def configure_object(params, values, logfunc):
@@ -203,8 +200,7 @@ class Exllama(LLM):
         setattr(generator.settings, "stop_sequences", values["stop_sequences"])
         logfunc(f"stop_sequences {values['stop_sequences']}")
 
-        disallowed = values.get("disallowed_tokens")
-        if disallowed:
+        if disallowed := values.get("disallowed_tokens"):
             generator.disallow_tokens(disallowed)
             print(f"Disallowed Tokens: {generator.disallowed_tokens}")
 
