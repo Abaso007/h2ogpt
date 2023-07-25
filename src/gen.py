@@ -875,17 +875,14 @@ def get_non_lora_model(base_model, model_loader, load_half,
         if gpu_id >= 0:
             # FIXME: If really distributes model, tend to get things like: ValueError: gpt_neox.embed_in.weight doesn't have any device set.
             # So avoid for now, just put on first GPU, unless score_model, put on last
-            if reward_type:
-                device_map = {'': n_gpus - 1}
-            else:
-                device_map = {'': min(n_gpus - 1, gpu_id)}
+            device_map = {'': n_gpus - 1} if reward_type else {'': min(n_gpus - 1, gpu_id)}
         if gpu_id == -1:
             device_map = {'': 'cuda'}
     else:
         device_map = {'': 'cpu'}
         model_kwargs['load_in_8bit'] = False
         model_kwargs['load_in_4bit'] = False
-    print('device_map: %s' % device_map, flush=True)
+    print(f'device_map: {device_map}', flush=True)
 
     load_in_8bit = model_kwargs.get('load_in_8bit', False)
     load_in_4bit = model_kwargs.get('load_in_4bit', False)
@@ -929,27 +926,30 @@ def get_client_from_inference_server(inference_server, base_model=None, raise_co
     hf_client = None
     if headers is None:
         try:
-            print("GR Client Begin: %s %s" % (inference_server, base_model), flush=True)
+            print(f"GR Client Begin: {inference_server} {base_model}", flush=True)
             # first do sanity check if alive, else gradio client takes too long by default
             requests.get(inference_server, timeout=int(os.getenv('REQUEST_TIMEOUT', '30')))
             gr_client = GradioClient(inference_server)
-            print("GR Client End: %s" % inference_server, flush=True)
+            print(f"GR Client End: {inference_server}", flush=True)
         except (OSError, ValueError) as e:
             # Occurs when wrong endpoint and should have been HF client, so don't hard raise, just move to HF
             gr_client = None
-            print("GR Client Failed %s %s: %s" % (inference_server, base_model, str(e)), flush=True)
+            print(
+                f"GR Client Failed {inference_server} {base_model}: {str(e)}",
+                flush=True,
+            )
         except (ConnectTimeoutError, ConnectTimeout, MaxRetryError, ConnectionError, ConnectionError2,
                 JSONDecodeError, ReadTimeout2, KeyError) as e:
             t, v, tb = sys.exc_info()
             ex = ''.join(traceback.format_exception(t, v, tb))
-            print("GR Client Failed %s %s: %s" % (inference_server, base_model, str(ex)), flush=True)
+            print(f"GR Client Failed {inference_server} {base_model}: {ex}", flush=True)
             if raise_connection_exception:
                 raise
 
     if gr_client is None:
         res = None
         from text_generation import Client as HFClient
-        print("HF Client Begin: %s %s" % (inference_server, base_model))
+        print(f"HF Client Begin: {inference_server} {base_model}")
         try:
             hf_client = HFClient(inference_server, headers=headers, timeout=int(os.getenv('REQUEST_TIMEOUT', '30')))
             # quick check valid TGI endpoint
@@ -960,10 +960,10 @@ def get_client_from_inference_server(inference_server, base_model=None, raise_co
             hf_client = None
             t, v, tb = sys.exc_info()
             ex = ''.join(traceback.format_exception(t, v, tb))
-            print("HF Client Failed %s %s: %s" % (inference_server, base_model, str(ex)))
+            print(f"HF Client Failed {inference_server} {base_model}: {ex}")
             if raise_connection_exception:
                 raise
-        print("HF Client End: %s %s : %s" % (inference_server, base_model, res))
+        print(f"HF Client End: {inference_server} {base_model} : {res}")
     return inference_server, gr_client, hf_client
 
 
@@ -1021,10 +1021,10 @@ def get_model(
     :param verbose:
     :return:
     """
-    print("Starting get_model: %s %s" % (base_model, inference_server), flush=True)
+    print(f"Starting get_model: {base_model} {inference_server}", flush=True)
 
-    triton_attn = False
     long_sequence = True
+    triton_attn = False
     config_kwargs = dict(use_auth_token=use_auth_token,
                          trust_remote_code=trust_remote_code,
                          offload_folder=offload_folder,
@@ -1035,7 +1035,7 @@ def get_model(
     config, _ = get_config(base_model, **config_kwargs, raise_exception=False)
 
     if base_model in non_hf_types:
-        assert config is None, "Expected config None for %s" % base_model
+        assert config is None, f"Expected config None for {base_model}"
 
     llama_type_from_config = 'llama' in str(config).lower()
     llama_type_from_name = "llama" in base_model.lower()
@@ -1044,8 +1044,10 @@ def get_model(
         llama_type = False
     if llama_type:
         if verbose:
-            print("Detected as llama type from"
-                  " config (%s) or name (%s)" % (llama_type_from_config, llama_type_from_name), flush=True)
+            print(
+                f"Detected as llama type from config ({llama_type_from_config}) or name ({llama_type_from_name})",
+                flush=True,
+            )
 
     model_loader, tokenizer_loader = get_loaders(model_name=base_model, reward_type=reward_type, llama_type=llama_type,
                                                  load_gptq=load_gptq, load_exllama=load_exllama, config=config,
@@ -1066,15 +1068,12 @@ def get_model(
     if load_exllama:
         tokenizer = tokenizer_loader
     elif config is not None and tokenizer_loader is not None and not isinstance(tokenizer_loader, str):
-        if load_exllama:
-            tokenizer = tokenizer_loader
-        else:
-            tokenizer = tokenizer_loader.from_pretrained(tokenizer_base_model, **tokenizer_kwargs)
-            # sets raw (no cushion) limit
-            set_model_max_len(config, tokenizer, verbose=False)
-            # if using fake tokenizer, not really accurate when lots of numbers, give a bit of buffer, else get:
-            # Generation Failed: Input validation error: `inputs` must have less than 2048 tokens. Given: 2233
-            tokenizer.model_max_length = tokenizer.model_max_length - 50
+        tokenizer = tokenizer_loader.from_pretrained(tokenizer_base_model, **tokenizer_kwargs)
+        # sets raw (no cushion) limit
+        set_model_max_len(config, tokenizer, verbose=False)
+        # if using fake tokenizer, not really accurate when lots of numbers, give a bit of buffer, else get:
+        # Generation Failed: Input validation error: `inputs` must have less than 2048 tokens. Given: 2233
+        tokenizer.model_max_length = tokenizer.model_max_length - 50
     else:
         tokenizer = FakeTokenizer()
 
@@ -1092,7 +1091,7 @@ def get_model(
             # include small token cushion
             tokenizer = FakeTokenizer(model_max_length=model_token_mapping[base_model] - 50)
         return inference_server, tokenizer, inference_server
-    assert not inference_server, "Malformed inference_server=%s" % inference_server
+    assert not inference_server, f"Malformed inference_server={inference_server}"
     if base_model in non_hf_types:
         from gpt4all_llm import get_model_tokenizer_gpt4all
         model, tokenizer, device = get_model_tokenizer_gpt4all(base_model)
@@ -1163,7 +1162,7 @@ def get_hf_model(load_8bit: bool = False,
 
     if lora_weights is not None and lora_weights.strip():
         if verbose:
-            print("Get %s lora weights" % lora_weights, flush=True)
+            print(f"Get {lora_weights} lora weights", flush=True)
     device = get_device()
 
     if 'gpt2' in base_model.lower():
@@ -1180,15 +1179,14 @@ def get_hf_model(load_8bit: bool = False,
 
     config, _ = get_config(base_model, return_model=False, raise_exception=True, **config_kwargs)
 
-    if tokenizer_loader is not None and not isinstance(tokenizer_loader, str):
-        if load_exllama:
-            tokenizer = tokenizer_loader
-        else:
-            tokenizer = tokenizer_loader.from_pretrained(tokenizer_base_model,
-                                                         **tokenizer_kwargs)
-    else:
+    if tokenizer_loader is None or isinstance(tokenizer_loader, str):
         tokenizer = tokenizer_loader
 
+    elif load_exllama:
+        tokenizer = tokenizer_loader
+    else:
+        tokenizer = tokenizer_loader.from_pretrained(tokenizer_base_model,
+                                                     **tokenizer_kwargs)
     if isinstance(tokenizer, str):
         # already a pipeline, tokenizer_loader is string for task
         model = model_loader(tokenizer,
@@ -1196,7 +1194,7 @@ def get_hf_model(load_8bit: bool = False,
                              device=0 if device == "cuda" else -1,
                              torch_dtype=torch.float16 if device == 'cuda' else torch.float32)
     else:
-        assert device in ["cuda", "cpu", "mps"], "Unsupported device %s" % device
+        assert device in ["cuda", "cpu", "mps"], f"Unsupported device {device}"
         model_kwargs = dict(local_files_only=local_files_only,
                             torch_dtype=torch.float16 if device == 'cuda' else torch.float32,
                             resume_download=resume_download,
@@ -1211,13 +1209,14 @@ def get_hf_model(load_8bit: bool = False,
                 device_map = {"": gpu_id}
             else:
                 device_map = "auto"
-            model_kwargs.update(dict(load_in_8bit=load_8bit,
-                                     load_in_4bit=load_4bit,
-                                     device_map=device_map,
-                                     ))
+            model_kwargs |= dict(
+                load_in_8bit=load_8bit,
+                load_in_4bit=load_4bit,
+                device_map=device_map,
+            )
         if 'mpt-' in base_model.lower() and gpu_id is not None and gpu_id >= 0:
             # MPT doesn't support spreading over GPUs
-            model_kwargs.update(dict(device_map={"": gpu_id} if device == 'cuda' else "cpu"))
+            model_kwargs |= dict(device_map={"": gpu_id} if device == 'cuda' else "cpu")
 
         if 'OpenAssistant/reward-model'.lower() in base_model.lower():
             # FIXME: could put on other GPUs
@@ -1242,7 +1241,12 @@ def get_hf_model(load_8bit: bool = False,
                                                )
                 else:
                     config, _ = get_config(base_model, **config_kwargs)
-                    if load_half and not (load_8bit or load_4bit or load_gptq):
+                    if (
+                        load_half
+                        and not load_8bit
+                        and not load_4bit
+                        and not load_gptq
+                    ):
                         model = model_loader(
                             base_model,
                             config=config,

@@ -28,12 +28,12 @@ def get_loaders(model_name, reward_type, llama_type=None, load_gptq='', load_exl
 
         # Locate files we need within that directory
         tokenizer_path = os.path.join(model_directory, "tokenizer.model")
-        assert os.path.isfile(tokenizer_path), "Missing %s" % tokenizer_path
+        assert os.path.isfile(tokenizer_path), f"Missing {tokenizer_path}"
         model_config_path = os.path.join(model_directory, "config.json")
-        assert os.path.isfile(model_config_path), "Missing %s" % model_config_path
+        assert os.path.isfile(model_config_path), f"Missing {model_config_path}"
         st_pattern = os.path.join(model_directory, "*.safetensors")
         model_path = glob.glob(st_pattern)[0]
-        assert os.path.isfile(model_path), "Missing %s" % model_path
+        assert os.path.isfile(model_path), f"Missing {model_path}"
 
         # Create config, model, tokenizer and generator
         exconfig = ExLlamaConfig(model_config_path)               # create config from config.json
@@ -81,9 +81,11 @@ def get_loaders(model_name, reward_type, llama_type=None, load_gptq='', load_exl
     elif 'mbart-' in model_name.lower():
         from transformers import MBartForConditionalGeneration, MBart50TokenizerFast
         return MBartForConditionalGeneration.from_pretrained, MBart50TokenizerFast
-    elif 't5' == model_name.lower() or \
-            't5-' in model_name.lower() or \
-            'flan-' in model_name.lower():
+    elif (
+        model_name.lower() == 't5'
+        or 't5-' in model_name.lower()
+        or 'flan-' in model_name.lower()
+    ):
         from transformers import AutoTokenizer, T5ForConditionalGeneration
         return T5ForConditionalGeneration.from_pretrained, AutoTokenizer
     elif 'bigbird' in model_name:
