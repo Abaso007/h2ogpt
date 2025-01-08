@@ -9,57 +9,36 @@
 
 # pip install pynsist
 
+# 1) clear old build
 
-# make wheels for some things not on pypi
-pip wheel antlr4-python3-runtime==4.9.3
-pip wheel ffmpy==0.3.1
-pip wheel fire==0.5.0
-pip wheel future==0.18.3
-pip wheel hnswlib==0.7.0
-pip wheel intervaltree==3.1.0
-pip wheel iopath==0.1.10
-pip wheel olefile==0.46
-pip wheel pycocotools==2.0.6
-pip wheel python-docx==0.8.11
-pip wheel python-pptx==0.6.21
-pip wheel rouge-score==0.1.2
-pip wheel sentence-transformers==2.2.2
-pip wheel sgmllib3k==1.0.0
-pip wheel validators==0.20.0
-pip wheel setuptools
-# CPU only
-pip wheel torch==2.0.1 --extra-index-url https://download.pytorch.org/whl/cpu
-pip wheel llama_cpp_python==0.1.73
-# GPU only
-pip wheel torch==2.0.1+cu117 --extra-index-url https://download.pytorch.org/whl/cu117
-pip wheel https://github.com/jllllll/bitsandbytes-windows-webui/releases/download/wheels/bitsandbytes-0.41.1-py3-none-win_amd64.whl
-pip wheel https://github.com/PanQiWei/AutoGPTQ/releases/download/v0.3.0/auto_gptq-0.3.0+cu118-cp310-cp310-win_amd64.whl
-pip wheel https://github.com/jllllll/exllama/releases/download/0.0.8/exllama-0.0.8+cu118-cp310-cp310-win_amd64.whl
-pip wheel https://github.com/jllllll/llama-cpp-python-cuBLAS-wheels/releases/download/textgen-webui/llama_cpp_python_cuda-0.1.73+cu117-cp310-cp310-win_amd64.whl
+del build
+del wheels
+
+# 2) Follow through README_WINDOWS.md installation, then do:
 
 mkdir wheels
-move *.whl wheels
-
 cd wheels
+pip freeze > ..\docs\windows_freezelist.txt
+# file needs some edits for download
+pip download -r ..\docs\windows_freezelist.txt
 
-# GPU only
-del torch-2.0.1-cp310-cp310-win_amd64.whl
-del llama_cpp_python-0.1.73*.whl
-move auto_gptq-0.3.0+cu118-cp310-cp310-win_amd64.whl auto_gptq-0.3.0-cp310-cp310-win_amd64.whl
-move exllama-0.0.8+cu118-cp310-cp310-win_amd64.whl exllama-0.0.8-cp310-cp310-win_amd64.whl
-move llama_cpp_python_cuda-0.1.73+cu117-cp310-cp310-win_amd64.whl llama_cpp_python_cuda-0.1.73-cp310-cp310-win_amd64.whl
-move torch-2.0.1+cu117-cp310-cp310-win_amd64.whl torch-2.0.1-cp310-cp310-win_amd64.whl
-# CPU only
-del llama_cpp_python_cuda*.whl
-del auto_gptq*.whl
-del exllama-*.whl
-del torch-2.0.1+cu117*.whl
-move torch-2.0.1+cpu-cp310-cp310-win_amd64.whl torch-2.0.1-cp310-cp310-win_amd64.whl
+# extra things from tar.gz need to be wheel not just download:
+for /r %i in (*.tar.gz) do pip wheel %i
+for /r %i in (*.zip) do pip wheel %i
+
+# GPU (so package name not confusing to installer)
+ren exllama-0.0.18+cu118-cp310-cp310-win_amd64.whl exllama-0.0.18-cp310-cp310-win_amd64.whl
+ren torchvision-0.16.2+cu118-cp310-cp310-win_amd64.whl torchvision-0.16.2-cp310-cp310-win_amd64.whl
+del hnswlib-0.7.0-cp310-cp310-win_amd64.whl
+# others:
+pip wheel tabula==1.0.5
+
+# FIXME:
+# pip install --global-option build_ext --global-option --compiler=mingw32 pygobject
 
 cd ..
-
-
 # Download: https://github.com/oschwartz10612/poppler-windows/releases/download/v23.08.0-0/Release-23.08.0-0.zip
+
 unzip Release-23.08.0-0.zip
 move poppler-23.08.0 poppler
 
@@ -69,6 +48,10 @@ mkdir Tesseract-OCR
 xcopy C:\Users\pseud\AppData\Local\Programs\Tesseract-OCR Tesseract-OCR  /s /e /h  # say specifies Directory
 
 python src/basic_nltk.py
+
+del C:\Users\pseud\AppData\Local\ms-playwright ms-playwright
+playwright install
+xcopy C:\Users\pseud\AppData\Local\ms-playwright ms-playwright /s /e /h  # say specifies Directory
 
 # build
 python -m nsist windows_installer.cfg
@@ -85,9 +68,8 @@ python run_app.py
 #@@ -34,7 +34,7 @@ pypi_wheels = absl-py==1.4.0
 #     Authlib==1.2.1
 #     # GPU
-#     #auto-gptq @ https://github.com/PanQiWei/AutoGPTQ/releases/download/v0.3.0/auto_gptq-0.3.0+cu118-cp310-cp310-win_amd64.whl#sha256=71d4b1aaaaf57244b9b38730f1fcbf15c25633475230258af996408b3d78a366
-#-    # auto_gptq==0.3.0
-#+    auto_gptq==0.3.0
+#-    # auto_gptq==0.4.2
+#+    auto_gptq==0.4.2
 #     backoff==2.2.1
 #     beautifulsoup4==4.12.2
 #     bioc==2.0
@@ -95,8 +77,8 @@ python run_app.py
 #     exceptiongroup==1.1.2
 #     execnet==2.0.2
 #     # GPU:
-#-    # exllama==0.0.8
-#+    exllama==0.0.8
+#-    # exllama==0.0.13
+#+    exllama==0.0.13
 #     fastapi==0.100.0
 #     feedparser==6.0.10
 #     ffmpy==0.3.1
